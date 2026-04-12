@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UniSteps Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      margin: 10px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>🚶 UniSteps Tracker</h2>
+
+<div class="card">
+  <p><b>Steps:</b> <span id="steps">0</span></p>
+  <p><b>Distance:</b> <span id="distance">0</span> m</p>
+  <p><b>Speed:</b> <span id="speed">0</span> km/h</p>
+  <p><b>Status:</b> <span id="status">Idle</span></p>
+  <p><b>Confidence:</b> <span id="confidence">Low</span></p>
+</div>
+
+<button onclick="startTracking()">Start Tracking</button>
+
+<script>
+let lastPosition = null;
+let lastTime = null;
+
+let totalDistance = 0;
+let totalSteps = 0;
+
+let highSpeedDuration = 0;
+
+const STRIDE_LENGTH = 0.7; // meters
+
+function startTracking() {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported");
+    return;
+  }
+
+  navigator.geolocation.watchPosition(updatePosition, errorHandler, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 5000
+  });
+}
+
+// 📍 MAIN LOGIC LOOP
+function updatePosition(position) {
+  const lat = position.coords.latitude;
+  const lng = position.coords.longitude;
+  const accuracy = position.coords.accuracy;
+
+  const currentTime = Date.now();
+
+  if (lastPosition) {
+    const distance = haversine(
+      lastPosition.lat,
+      lastPosition.lng,
+      lat,
+      lng
+    );
+
+    const timeDiff = (currentTime - lastTime) / 1000;
+
+    // Ignore GPS noise (very small movement)
+    if (distance < 2) return;
+
+    totalDistance += distance;
+
+    // ✅ Steps calculation
+    totalSteps = Math.floor(totalDistance / STRIDE_LENGTH);
+
+    // ✅ Speed calculation (km/h)
+    const speed = (distance / timeDiff) * 3.6;
+
+    // ✅ Movement classification
+    const movement = classifyMovement(speed, timeDiff);
+
+    // ✅ Confidence calculation
+    const confidence = getConfidence(accuracy, distance);
+
+    updateUI(totalSteps, totalDistance, speed, movement, confidence);
+  }
+
+  lastPosition = { lat, lng };
+  lastTime = currentTime;
+}
+
+// 📏 Haversine Formula
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+// 🚶 Movement Detection
+function classifyMovement(speed, timeDiff) {
+
+  if (speed > 15) {
+    highSpeedDuration += timeDiff;
+  } else {
+    highSpeedDuration = 0;
+  }
+
+  if (highSpeedDuration > 120) {
+    return "🚗 Possible Vehicle";
+  }
+
+  if (speed > 6) return "🏃 Running";
+  if (speed > 0.5) return "🚶 Walking";
+
+  return "Idle";
+}
+
+// 📶 Confidence Logic
+function getConfidence(accuracy, distance) {
+  if (accuracy < 10 && distance > 5) return "High";
+  if (accuracy < 30) return "Medium";
+  return "Low";
+}
+
+// 🖥️ Update UI
+function updateUI(steps, distance, speed, status, confidence) {
+  document.getElementById("steps").innerText = steps;
+  document.getElementById("distance").innerText = distance.toFixed(2);
+  document.getElementById("speed").innerText = speed.toFixed(2);
+  document.getElementById("status").innerText = status;
+  document.getElementById("confidence").innerText = confidence;
+}
+
+function errorHandler(err) {
+  console.error(err);
+}
+</script>
+
+</body>
+</html>
